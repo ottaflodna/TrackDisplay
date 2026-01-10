@@ -5,7 +5,8 @@ Main PyQt5 window for tracklog management
 from PyQt5.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
                              QPushButton, QListWidget, QListWidgetItem, 
                              QLabel, QLineEdit, QSpinBox, QColorDialog,
-                             QGroupBox, QFormLayout, QMessageBox, QDockWidget)
+                             QGroupBox, QFormLayout, QMessageBox, QDockWidget,
+                             QComboBox, QCheckBox)
 from PyQt5.QtWebEngineWidgets import QWebEngineView
 from PyQt5.QtCore import Qt, pyqtSignal, QUrl
 from PyQt5.QtGui import QColor
@@ -24,18 +25,17 @@ class TrackListItem(QWidget):
         super().__init__(parent)
         self.track = track
         self.setup_ui()
-        
+    
     def setup_ui(self):
         """Setup the UI for track item"""
         layout = QHBoxLayout()
         layout.setContentsMargins(5, 5, 5, 5)
         
-        # Color button
-        self.color_btn = QPushButton()
-        self.color_btn.setFixedSize(30, 30)
-        self.color_btn.setStyleSheet(f"background-color: {self.track.color or '#FF0000'}")
-        self.color_btn.clicked.connect(self.change_color)
-        layout.addWidget(self.color_btn)
+        # Color display (non-clickable)
+        self.color_label = QLabel()
+        self.color_label.setFixedSize(30, 30)
+        self.color_label.setStyleSheet(f"background-color: {self.track.color or '#FF0000'}; border: 2px solid #666; border-radius: 3px;")
+        layout.addWidget(self.color_label)
         
         # Name input
         self.name_input = QLineEdit(self.track.name)
@@ -62,16 +62,6 @@ class TrackListItem(QWidget):
         
         self.setLayout(layout)
     
-    def change_color(self):
-        """Open color picker dialog"""
-        current_color = QColor(self.track.color or '#FF0000')
-        color = QColorDialog.getColor(current_color, self, "Select Track Color")
-        
-        if color.isValid():
-            self.track.color = color.name()
-            self.color_btn.setStyleSheet(f"background-color: {self.track.color}")
-            self.properties_changed.emit()
-    
     def update_name(self, name: str):
         """Update track name"""
         self.track.name = name
@@ -90,6 +80,12 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.tracks: List[Track] = []
         self.current_map_file: Optional[str] = None
+        
+        # Map properties
+        self.base_map = "Opentopomap"
+        self.track_color_mode = "Plain"
+        self.show_start_stop = True  # Default: show start/stop markers
+        
         self.setup_ui()
         self.initialize_empty_map()
         
@@ -103,6 +99,7 @@ class MainWindow(QMainWindow):
         
         # Create dock widgets
         self.setup_tracks_dock()
+        self.setup_map_properties_dock()
         
         # Status bar
         self.statusBar().showMessage("Ready")
@@ -157,6 +154,65 @@ class MainWindow(QMainWindow):
         
         # Add dock to main window (default: left side)
         self.addDockWidget(Qt.LeftDockWidgetArea, tracks_dock)
+        
+        # Store reference for positioning other docks
+        self.tracks_dock = tracks_dock
+    
+    def setup_map_properties_dock(self):
+        """Setup the map properties dock widget"""
+        # Create dock widget
+        properties_dock = QDockWidget("Map Properties", self)
+        properties_dock.setAllowedAreas(Qt.LeftDockWidgetArea | Qt.RightDockWidgetArea | Qt.BottomDockWidgetArea)
+        
+        # Create properties widget
+        properties_widget = QWidget()
+        properties_layout = QFormLayout()
+        properties_widget.setLayout(properties_layout)
+        
+        # Base map selector
+        self.base_map_combo = QComboBox()
+        self.base_map_combo.addItems(["Opentopomap"])
+        self.base_map_combo.setCurrentText(self.base_map)
+        self.base_map_combo.currentTextChanged.connect(self.on_base_map_changed)
+        properties_layout.addRow("Base map:", self.base_map_combo)
+        
+        # Track color mode selector
+        self.track_color_combo = QComboBox()
+        self.track_color_combo.addItems(["Plain"])
+        self.track_color_combo.setCurrentText(self.track_color_mode)
+        self.track_color_combo.currentTextChanged.connect(self.on_track_color_changed)
+        properties_layout.addRow("Track color:", self.track_color_combo)
+        
+        # Show start/stop checkbox
+        self.show_start_stop_checkbox = QCheckBox()
+        self.show_start_stop_checkbox.setChecked(self.show_start_stop)
+        self.show_start_stop_checkbox.stateChanged.connect(self.on_show_start_stop_changed)
+        properties_layout.addRow("Show start and stop:", self.show_start_stop_checkbox)
+        
+        # Set widget to dock
+        properties_dock.setWidget(properties_widget)
+        
+        # Add dock to main window on left side, below tracks dock
+        self.addDockWidget(Qt.LeftDockWidgetArea, properties_dock)
+        self.splitDockWidget(self.tracks_dock, properties_dock, Qt.Vertical)
+    
+    def on_base_map_changed(self, value: str):
+        """Handle base map selection change"""
+        self.base_map = value
+        self.statusBar().showMessage(f"Base map set to: {value}")
+    
+    def on_track_color_changed(self, value: str):
+        """Handle track color mode change"""
+        self.track_color_mode = value
+        self.statusBar().showMessage(f"Track color mode set to: {value}")
+    
+    def on_show_start_stop_changed(self, state: int):
+        """Handle show start/stop checkbox change"""
+        self.show_start_stop = (state == Qt.Checked)
+        self.statusBar().showMessage(f"Start/stop markers: {'On' if self.show_start_stop else 'Off'}")
+        # Auto-update map when option changes
+        if self.tracks:
+            self.update_map()
     
     def setup_map_central_widget(self):
         """Setup the map display as central widget"""
@@ -203,10 +259,9 @@ class MainWindow(QMainWindow):
                     continue
                 
                 if track:
-                    # Assign default color if not set
-                    if not track.color:
-                        from viewer.map_viewer import MapViewer
-                        track.color = MapViewer.COLORS[len(self.tracks) % len(MapViewer.COLORS)]
+                    # Assign fixed color from cycler based on current track count
+                    from viewer.map_viewer import MapViewer
+                    track.color = MapViewer.COLORS[len(self.tracks) % len(MapViewer.COLORS)]
                     
                     # Set default line width
                     if not hasattr(track, 'line_width'):
@@ -341,7 +396,7 @@ class MainWindow(QMainWindow):
             else:
                 # Generate map with tracks
                 viewer = MapViewer()
-                map_file = viewer.create_map(self.tracks)
+                map_file = viewer.create_map(self.tracks, show_start_stop=self.show_start_stop)
                 self.current_map_file = map_file
                 
                 # Load map in web view and force reload to bypass cache

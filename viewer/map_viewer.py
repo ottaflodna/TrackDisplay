@@ -12,11 +12,11 @@ from models.track import Track
 class MapViewer:
     """Create and display interactive maps with GPS tracks"""
     
-    # Color palette for multiple tracks
+    # Extended color palette for multiple tracks (20 colors)
     COLORS = [
         '#FF0000',  # Red
         '#0000FF',  # Blue
-        '#00FF00',  # Green
+        '#00FF00',  # Lime Green
         '#FF00FF',  # Magenta
         '#FFA500',  # Orange
         '#00FFFF',  # Cyan
@@ -24,15 +24,26 @@ class MapViewer:
         '#800080',  # Purple
         '#FFC0CB',  # Pink
         '#A52A2A',  # Brown
+        '#FF6347',  # Tomato
+        '#4169E1',  # Royal Blue
+        '#32CD32',  # Lime
+        '#FF1493',  # Deep Pink
+        '#FF8C00',  # Dark Orange
+        '#00CED1',  # Dark Turquoise
+        '#FFD700',  # Gold
+        '#9370DB',  # Medium Purple
+        '#FF69B4',  # Hot Pink
+        '#8B4513',  # Saddle Brown
     ]
     
-    def create_map(self, tracks: List[Track], output_file: str = 'track_map.html') -> str:
+    def create_map(self, tracks: List[Track], output_file: str = 'track_map.html', show_start_stop: bool = True) -> str:
         """
         Create an interactive map with all tracks
         
         Args:
             tracks: List of Track objects to display
             output_file: Output HTML filename
+            show_start_stop: Whether to show start/stop markers
             
         Returns:
             Path to the generated HTML file
@@ -55,7 +66,7 @@ class MapViewer:
         for idx, track in enumerate(tracks):
             color = self.COLORS[idx % len(self.COLORS)]
             track.color = color
-            self._add_track_to_map(m, track, color)
+            self._add_track_to_map(m, track, color, show_start_stop)
         
         # Save map
         m.save(output_file)
@@ -77,7 +88,7 @@ class MapViewer:
         
         return [center_lat, center_lng]
     
-    def _add_track_to_map(self, m: folium.Map, track: Track, color: str):
+    def _add_track_to_map(self, m: folium.Map, track: Track, color: str, show_start_stop: bool = True):
         """Add a single track to the map"""
         if len(track) == 0:
             return
@@ -97,19 +108,21 @@ class MapViewer:
             popup=self._create_popup_text(track)
         ).add_to(m)
         
-        # Add start marker (green)
-        folium.Marker(
-            location=locations[0],
-            popup=f"Start: {track.name}",
-            icon=folium.Icon(color='green', icon='play')
-        ).add_to(m)
-        
-        # Add end marker (red)
-        folium.Marker(
-            location=locations[-1],
-            popup=f"End: {track.name}",
-            icon=folium.Icon(color='red', icon='stop')
-        ).add_to(m)
+        # Add start and end markers if enabled
+        if show_start_stop:
+            # Add start marker (green)
+            folium.Marker(
+                location=locations[0],
+                popup=f"Start: {track.name}",
+                icon=folium.Icon(color='green', icon='play')
+            ).add_to(m)
+            
+            # Add end marker (red)
+            folium.Marker(
+                location=locations[-1],
+                popup=f"End: {track.name}",
+                icon=folium.Icon(color='red', icon='stop')
+            ).add_to(m)
     
     def _create_popup_text(self, track: Track) -> str:
         """Create popup text with track information"""

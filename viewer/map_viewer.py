@@ -49,7 +49,7 @@ class MapViewer:
                    fit_bounds: bool = False, current_center: List[float] = None,
                    current_zoom: int = None, color_mode: str = 'Plain',
                    show_legend: bool = False, color_min: Optional[float] = None,
-                   color_max: Optional[float] = None) -> str:
+                   color_max: Optional[float] = None, zoom_control: bool = True) -> str:
         """
         Create an interactive map with all tracks
         
@@ -82,7 +82,7 @@ class MapViewer:
             zoom = current_zoom
         
         # Create map with selected base layer
-        m = self._create_base_map(center, base_map, zoom)
+        m = self._create_base_map(center, base_map, zoom, zoom_control)
         
         # Add each track with appropriate coloring
         if color_mode == 'Plain':
@@ -140,13 +140,14 @@ class MapViewer:
         # Return [[min_lat, min_lng], [max_lat, max_lng]]
         return [[min(all_lats), min(all_lngs)], [max(all_lats), max(all_lngs)]]
     
-    def _create_base_map(self, center: List[float], base_map: str, zoom: int = 13) -> folium.Map:
+    def _create_base_map(self, center: List[float], base_map: str, zoom: int = 13, zoom_control: bool = True) -> folium.Map:
         """Create a folium map with the specified base layer"""
         
         if base_map == 'Satellite':
             m = folium.Map(
                 location=center,
                 zoom_start=zoom,
+                zoom_control=zoom_control,
                 tiles='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
                 attr='Esri',
                 name='Satellite'
@@ -159,6 +160,7 @@ class MapViewer:
             m = folium.Map(
                 location=center,
                 zoom_start=zoom,
+                zoom_control=zoom_control,
                 tiles=f'https://tile.thunderforest.com/cycle/{{z}}/{{x}}/{{y}}.png?apikey={api_key}',
                 attr='Maps © Thunderforest, Data © OpenStreetMap contributors',
                 name='OpenCycleMap'
@@ -168,6 +170,7 @@ class MapViewer:
             m = folium.Map(
                 location=center,
                 zoom_start=zoom,
+                zoom_control=zoom_control,
                 tiles='https://wmts.geo.admin.ch/1.0.0/ch.swisstopo.pixelkarte-farbe/default/current/3857/{z}/{x}/{y}.jpeg',
                 attr='© swisstopo',
                 name='SwissTopo'
@@ -177,6 +180,7 @@ class MapViewer:
             m = folium.Map(
                 location=center,
                 zoom_start=zoom,
+                zoom_control=zoom_control,
                 tiles='OpenTopoMap',
                 attr='Map data: © OpenStreetMap contributors, SRTM | Map style: © OpenTopoMap'
             )

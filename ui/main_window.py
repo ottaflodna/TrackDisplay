@@ -84,8 +84,9 @@ class MainWindow(QMainWindow):
         # Map properties
         self.base_map = "OpenTopoMap"
         self.track_color_mode = "Plain"
-        self.show_start_stop = True  # Default: show start/stop markers
+        self.show_start_stop = False  # Default: show start/stop markers
         self.show_legend = False  # Default: don't show legend
+        self.show_zoom_controls = False  # Default: show zoom controls
         self.color_min: Optional[float] = None  # Min value for color scale
         self.color_max: Optional[float] = None  # Max value for color scale
         
@@ -151,6 +152,12 @@ class MainWindow(QMainWindow):
         
         tracks_layout.addLayout(button_layout)
         
+        # Screenshot button
+        screenshot_btn = QPushButton("Screenshot")
+        screenshot_btn.setStyleSheet("padding: 8px; font-size: 12px;")
+        screenshot_btn.clicked.connect(self.take_screenshot)
+        tracks_layout.addWidget(screenshot_btn)
+        
         # Set widget to dock
         tracks_dock.setWidget(tracks_widget)
         
@@ -177,8 +184,21 @@ class MainWindow(QMainWindow):
         self.base_map_combo.addItems(MapViewer.AVAILABLE_BASE_MAPS)
         self.base_map_combo.setCurrentText(self.base_map)
         self.base_map_combo.currentTextChanged.connect(self.on_base_map_changed)
-        properties_layout.addRow("Base map:", self.base_map_combo)
-        
+
+        map_groupbox = QGroupBox()
+        map_groupbox.setTitle("Base map settings")
+        map_layout = QFormLayout()
+        map_groupbox.setLayout(map_layout)
+        map_layout.addRow("Base map:", self.base_map_combo)
+        properties_layout.addRow(map_groupbox)
+
+        # Add a separator
+        track_groupbox = QGroupBox()
+        track_groupbox.setTitle("Track color settings")
+        track_layout = QFormLayout()
+        track_groupbox.setLayout(track_layout)
+        properties_layout.addRow(track_groupbox)
+
         # Track color mode selector
         self.track_color_combo = QComboBox()
         self.track_color_combo.addItems([
@@ -194,35 +214,49 @@ class MainWindow(QMainWindow):
         ])
         self.track_color_combo.setCurrentText(self.track_color_mode)
         self.track_color_combo.currentTextChanged.connect(self.on_track_color_changed)
-        properties_layout.addRow("Track color:", self.track_color_combo)
-        
-        # Show start/stop checkbox
-        self.show_start_stop_checkbox = QCheckBox()
-        self.show_start_stop_checkbox.setChecked(self.show_start_stop)
-        self.show_start_stop_checkbox.stateChanged.connect(self.on_show_start_stop_changed)
-        properties_layout.addRow("Show start and stop:", self.show_start_stop_checkbox)
-        
-        # Show legend checkbox
-        self.show_legend_checkbox = QCheckBox()
-        self.show_legend_checkbox.setChecked(self.show_legend)
-        self.show_legend_checkbox.stateChanged.connect(self.on_show_legend_changed)
-        properties_layout.addRow("Show legend:", self.show_legend_checkbox)
-        
+        track_layout.addRow("Track color:", self.track_color_combo)
+               
         # Color scale min/max inputs
         self.color_min_spinbox = QDoubleSpinBox()
         self.color_min_spinbox.setRange(-999999, 999999)
         self.color_min_spinbox.setDecimals(2)
         self.color_min_spinbox.setEnabled(False)
         self.color_min_spinbox.editingFinished.connect(self.on_color_min_changed)
-        properties_layout.addRow("Color min:", self.color_min_spinbox)
+        track_layout.addRow("Color min:", self.color_min_spinbox)
         
         self.color_max_spinbox = QDoubleSpinBox()
         self.color_max_spinbox.setRange(-999999, 999999)
         self.color_max_spinbox.setDecimals(2)
         self.color_max_spinbox.setEnabled(False)
         self.color_max_spinbox.editingFinished.connect(self.on_color_max_changed)
-        properties_layout.addRow("Color max:", self.color_max_spinbox)
+        track_layout.addRow("Color max:", self.color_max_spinbox)
         
+        # Add a separator
+        display_groupbox = QGroupBox()
+        display_groupbox.setTitle("Viewer display settings")
+        display_layout = QFormLayout()
+        display_groupbox.setLayout(display_layout)
+        properties_layout.addRow(display_groupbox)
+
+        # Show start/stop checkbox
+        self.show_start_stop_checkbox = QCheckBox()
+        self.show_start_stop_checkbox.setChecked(self.show_start_stop)
+        self.show_start_stop_checkbox.stateChanged.connect(self.on_show_start_stop_changed)
+        display_layout.addRow("Show start and stop:", self.show_start_stop_checkbox)
+        
+        # Show legend checkbox
+        self.show_legend_checkbox = QCheckBox()
+        self.show_legend_checkbox.setChecked(self.show_legend)
+        self.show_legend_checkbox.stateChanged.connect(self.on_show_legend_changed)
+        display_layout.addRow("Show legend:", self.show_legend_checkbox)
+        
+        # Show zoom controls checkbox
+        self.show_zoom_controls_checkbox = QCheckBox()
+        self.show_zoom_controls_checkbox.setChecked(self.show_zoom_controls)
+        self.show_zoom_controls_checkbox.stateChanged.connect(self.on_show_zoom_controls_changed)
+        display_layout.addRow("Show zoom controls:", self.show_zoom_controls_checkbox)
+
+
         # Set widget to dock
         properties_dock.setWidget(properties_widget)
         
@@ -304,6 +338,44 @@ class MainWindow(QMainWindow):
         # Auto-regenerate map when option changes (preserve zoom/center)
         if self.tracks:
             self.regenerate_map(fit_bounds=False)
+    
+    def on_show_zoom_controls_changed(self, state: int):
+        """Handle show zoom controls checkbox change"""
+        self.show_zoom_controls = (state == Qt.Checked)
+        self.statusBar().showMessage(f"Zoom controls: {'On' if self.show_zoom_controls else 'Off'}")
+        # Auto-regenerate map when option changes (preserve zoom/center)
+        if self.tracks:
+            self.regenerate_map(fit_bounds=False)
+        else:
+            self.initialize_empty_map()
+    
+    def take_screenshot(self):
+        """Capture a screenshot of the map view"""
+        from PyQt5.QtWidgets import QFileDialog
+        from PyQt5.QtCore import QTimer
+        from datetime import datetime
+        
+        # Generate default filename with timestamp
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        default_filename = f"map_screenshot_{timestamp}.png"
+        
+        # Ask user where to save
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Save Screenshot",
+            default_filename,
+            "PNG Images (*.png);;JPEG Images (*.jpg);;All Files (*)"
+        )
+        
+        if file_path:
+            # Capture the screenshot
+            pixmap = self.map_view.grab()
+            
+            # Save the screenshot
+            if pixmap.save(file_path):
+                self.statusBar().showMessage(f"Screenshot saved: {file_path}")
+            else:
+                QMessageBox.warning(self, "Error", "Failed to save screenshot")
     
     def setup_map_central_widget(self):
         """Setup the map display as central widget"""
@@ -456,7 +528,7 @@ class MainWindow(QMainWindow):
         viewer = MapViewer()
         
         # Create empty map with selected base layer
-        m = viewer._create_base_map(lausanne_coords, self.base_map)
+        m = viewer._create_base_map(lausanne_coords, self.base_map, zoom_control=self.show_zoom_controls)
         
         # Save map
         map_file = os.path.abspath('track_map.html')
@@ -502,7 +574,8 @@ class MainWindow(QMainWindow):
                     'color_mode': self.track_color_mode,
                     'show_legend': self.show_legend,
                     'color_min': self.color_min,
-                    'color_max': self.color_max
+                    'color_max': self.color_max,
+                    'zoom_control': self.show_zoom_controls
                 }
                 
                 if not fit_bounds:

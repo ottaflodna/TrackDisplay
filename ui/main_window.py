@@ -53,16 +53,6 @@ class TrackListItem(QWidget):
         self.width_spinner.valueChanged.connect(self.update_width)
         layout.addWidget(self.width_spinner)
         
-        # Track type label
-        type_label = QLabel(f"({self.track.track_type.upper()})")
-        type_label.setStyleSheet("color: gray;")
-        layout.addWidget(type_label)
-        
-        # Points count
-        points_label = QLabel(f"{len(self.track)} pts")
-        points_label.setStyleSheet("color: gray;")
-        layout.addWidget(points_label)
-        
         # Remove button
         remove_btn = QPushButton("✕")
         remove_btn.setFixedSize(30, 30)
@@ -310,7 +300,7 @@ class MainWindow(QMainWindow):
     
     def on_track_properties_changed(self):
         """Handle track property changes"""
-        self.statusBar().showMessage("Track properties updated. Updating map...", 1000)
+        self.statusBar().showMessage("Track properties updated. Updating map...")
         self.update_map()
     
     def initialize_empty_map(self):
@@ -354,8 +344,9 @@ class MainWindow(QMainWindow):
                 map_file = viewer.create_map(self.tracks)
                 self.current_map_file = map_file
                 
-                # Load map in web view
+                # Load map in web view and force reload to bypass cache
                 self.load_map_in_view(map_file)
+                self.map_view.reload()
                 
                 self.statusBar().showMessage(f"Map updated with {len(self.tracks)} track(s)")
             

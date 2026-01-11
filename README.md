@@ -1,11 +1,12 @@
 # GPS Tracklog Viewer
 
-A Python application to view multiple GPS tracklogs (GPX for biking and IGC for paragliding) on an interactive map with OpenTopoMap base layer.
+A Python application to view multiple GPS tracklogs (GPX for biking, IGC for paragliding, and TCX for training data) on an interactive map with OpenTopoMap base layer.
 
 ## Features
 
 - ✅ Support for GPX files (bike tracks)
 - ✅ Support for IGC files (paragliding tracks)
+- ✅ Support for TCX files (training data with power, heart rate, cadence)
 - ✅ Multi-file selection
 - ✅ Interactive map with OpenTopoMap
 - ✅ Color-coded tracks with legend
@@ -51,6 +52,7 @@ TrackDisplay/
 
 - **GPX**: Standard GPS Exchange Format (cycling, hiking, etc.)
 - **IGC**: International Gliding Commission format (paragliding, gliding)
+- **TCX**: Training Center XML format (Garmin devices, includes power, heart rate, cadence)
 
 ## Map Features
 

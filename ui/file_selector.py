@@ -12,7 +12,7 @@ class FileSelector:
     
     def select_files(self) -> List[str]:
         """
-        Open file dialog to select multiple GPX/IGC files
+        Open file dialog to select multiple GPX/IGC/TCX files
         
         Returns:
             List of selected file paths
@@ -26,9 +26,10 @@ class FileSelector:
         file_paths = filedialog.askopenfilenames(
             title='Select GPS Track Files',
             filetypes=[
-                ('GPS Track Files', '*.gpx *.igc'),
+                ('GPS Track Files', '*.gpx *.igc *.tcx'),
                 ('GPX Files', '*.gpx'),
                 ('IGC Files', '*.igc'),
+                ('TCX Files', '*.tcx'),
                 ('All Files', '*.*')
             ]
         )

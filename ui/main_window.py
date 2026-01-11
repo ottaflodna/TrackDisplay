@@ -395,6 +395,7 @@ class MainWindow(QMainWindow):
         from ui.file_selector import FileSelector
         from parsers.gpx_parser import GPXParser
         from parsers.igc_parser import IGCParser
+        from parsers.tcx_parser import TCXParser
         
         selector = FileSelector()
         file_paths = selector.select_files()
@@ -408,6 +409,7 @@ class MainWindow(QMainWindow):
         
         gpx_parser = GPXParser()
         igc_parser = IGCParser()
+        tcx_parser = TCXParser()
         added_count = 0
         
         for i, file_path in enumerate(file_paths):
@@ -420,6 +422,8 @@ class MainWindow(QMainWindow):
                     track = gpx_parser.parse(file_path)
                 elif file_path.lower().endswith('.igc'):
                     track = igc_parser.parse(file_path)
+                elif file_path.lower().endswith('.tcx'):
+                    track = tcx_parser.parse(file_path)
                 else:
                     continue
                 

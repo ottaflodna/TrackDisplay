@@ -15,7 +15,7 @@ def main():
     QApplication.setAttribute(Qt.AA_ShareOpenGLContexts)
     
     # Import after setting the attribute
-    from ui.main_window import MainWindow
+    from ui.map_main_window import MainWindow
     
     app = QApplication(sys.argv)
     app.setStyle('Fusion')  # Modern look

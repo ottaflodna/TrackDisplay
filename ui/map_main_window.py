@@ -49,7 +49,7 @@ class TrackListItem(QWidget):
         self.width_spinner = QSpinBox()
         self.width_spinner.setMinimum(1)
         self.width_spinner.setMaximum(10)
-        self.width_spinner.setValue(getattr(self.track, 'line_width', 5))
+        self.width_spinner.setValue(getattr(self.track, 'line_width', 3))
         self.width_spinner.valueChanged.connect(self.update_width)
         layout.addWidget(self.width_spinner)
         
@@ -434,7 +434,7 @@ class MainWindow(QMainWindow):
                     
                     # Set default line width
                     if not hasattr(track, 'line_width'):
-                        track.line_width = 5
+                        track.line_width = 3
                     
                     self.tracks.append(track)
                     self.add_track_to_list(track)
@@ -680,7 +680,7 @@ class MainWindow(QMainWindow):
                 track.color = MapViewer.COLORS[idx % len(MapViewer.COLORS)]
             
             if not hasattr(track, 'line_width'):
-                track.line_width = 5
+                track.line_width = 3
             
             self.add_track_to_list(track)
         

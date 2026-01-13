@@ -1,283 +1,220 @@
 """
-Curve Viewer - Displays track data as interactive charts/curves
+Curve Viewer - Displays track data as interactive matplotlib charts
 Example of reusing the base architecture for a different visualization
 """
 
 import os
 from typing import List, Dict, Any, Optional
+import matplotlib
+matplotlib.use('Qt5Agg')
+import matplotlib.pyplot as plt
+from matplotlib.figure import Figure
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
 from models.track import Track
 from viewer.base_viewer import BaseViewer
 
 
 class CurveViewer(BaseViewer):
     """
-    Create and display interactive charts with GPS track data
+    Create and display interactive matplotlib charts with GPS track data
     Shows altitude, speed, power, heart rate, etc. over time/distance
     """
     
-    # Available chart types
-    AVAILABLE_CHARTS = [
-        'Altitude Profile',
-        'Speed Profile',
-        'Heart Rate Profile',
-        'Power Profile',
-        'Cadence Profile',
-        'Temperature Profile',
-        'Multi-View (All)'
+    # Available data attributes
+    AVAILABLE_DATA = [
+        'Distance (km)',
+        'Time (min)',
+        'Point Index',
+        'Altitude (m)',
+        'Speed (km/h)',
+        'Heart Rate (bpm)',
+        'Power (W)',
+        'Cadence (rpm)',
+        'Temperature (°C)',
+        'Vertical Speed (m/s)'
     ]
     
-    # X-axis options
-    X_AXIS_OPTIONS = [
-        'Distance (km)',
-        'Time',
-        'Point Index'
+    # Sequential data types (for line plots)
+    SEQUENTIAL_DATA = ['Distance (km)', 'Time (min)', 'Point Index']
+    
+    # Available colormaps
+    AVAILABLE_COLORMAPS = [
+        'viridis',
+        'plasma',
+        'inferno',
+        'magma',
+        'cividis',
+        'turbo',
+        'jet',
+        'rainbow',
+        'hot',
+        'cool',
+        'spring',
+        'summer',
+        'autumn',
+        'winter'
     ]
+    
+    def __init__(self):
+        super().__init__()
+        self.figure = None
+        self.canvas = None
+        self.toolbar = None
     
     def get_available_options(self) -> Dict[str, Any]:
         """Get available configuration options for curve viewer"""
         return {
-            'chart_type': {
+            'x_data': {
                 'type': 'combo',
-                'values': self.AVAILABLE_CHARTS,
-                'label': 'Chart Type'
+                'values': self.AVAILABLE_DATA,
+                'label': 'X-Axis Data'
             },
-            'x_axis': {
+            'y_data': {
                 'type': 'combo',
-                'values': self.X_AXIS_OPTIONS,
-                'label': 'X-Axis'
+                'values': self.AVAILABLE_DATA,
+                'label': 'Y-Axis Data'
             },
-            'show_grid': {
-                'type': 'checkbox',
-                'label': 'Show Grid'
+            'color_data': {
+                'type': 'combo',
+                'values': ['None'] + self.AVAILABLE_DATA,
+                'label': 'Color Data'
+            },
+            'colormap': {
+                'type': 'combo',
+                'values': self.AVAILABLE_COLORMAPS,
+                'label': 'Colormap'
             },
             'show_legend': {
                 'type': 'checkbox',
+                'default': True,
                 'label': 'Show Legend'
-            },
-            'smooth_data': {
-                'type': 'checkbox',
-                'label': 'Smooth Data'
             }
         }
     
     def get_default_options(self) -> Dict[str, Any]:
-        """Get default values for all options"""
+        """Get default options for curve viewer"""
         return {
-            'chart_type': 'Altitude Profile',
-            'x_axis': 'Distance (km)',
-            'show_grid': True,
-            'show_legend': True,
-            'smooth_data': False
+            'x_data': 'Distance (km)',
+            'y_data': 'Altitude (m)',
+            'color_data': 'None',
+            'colormap': 'viridis',
+            'color_min': None,
+            'color_max': None,
+            'show_legend': True
         }
     
-    def create_view(self, tracks: List[Track], output_file: str = 'track_curves.html', **kwargs) -> tuple:
+    def create_view(self, tracks: List[Track], options: Dict[str, Any] = None) -> tuple:
         """
-        Create interactive charts with track data
-        
-        Args:
-            tracks: List of Track objects to display
-            output_file: Output HTML filename
-            **kwargs: Curve-specific options
-            
-        Returns:
-            Tuple of (file_path, view_state_dict)
+        Create matplotlib figure and canvas for the tracks
+        Returns (canvas, toolbar) tuple
         """
         if not tracks:
-            raise ValueError("No tracks provided")
+            return self._create_empty_view()
         
-        # Extract options with defaults
-        chart_type = kwargs.get('chart_type', 'Altitude Profile')
-        x_axis = kwargs.get('x_axis', 'Distance (km)')
-        show_grid = kwargs.get('show_grid', True)
-        show_legend = kwargs.get('show_legend', True)
-        smooth_data = kwargs.get('smooth_data', False)
+        # Get options
+        opts = self.get_default_options()
+        if options:
+            opts.update(options)
         
-        # Generate HTML with Plotly charts
-        html_content = self._generate_html(
-            tracks, chart_type, x_axis, show_grid, show_legend, smooth_data
-        )
+        x_data = opts.get('x_data', 'Distance (km)')
+        y_data = opts.get('y_data', 'Altitude (m)')
+        color_data = opts.get('color_data', 'None')
+        colormap = opts.get('colormap', 'viridis')
+        color_min = opts.get('color_min', None)
+        color_max = opts.get('color_max', None)
+        show_legend = opts.get('show_legend', True)
         
-        # Write to file
-        with open(output_file, 'w', encoding='utf-8') as f:
-            f.write(html_content)
+        # Create figure and canvas
+        self.figure = Figure(figsize=(10, 6), dpi=100)
+        self.canvas = FigureCanvas(self.figure)
+        self.toolbar = NavigationToolbar(self.canvas, None)
         
-        # Return file path and empty view state (curves don't have zoom/pan state like maps)
-        view_state = {}
+        # Create the plot
+        ax = self.figure.add_subplot(111)
         
-        return (os.path.abspath(output_file), view_state)
-    
-    def _generate_html(self, tracks: List[Track], chart_type: str, x_axis: str,
-                      show_grid: bool, show_legend: bool, smooth_data: bool) -> str:
-        """Generate HTML with Plotly charts"""
+        # Determine plot type based on X-axis data
+        use_line_plot = x_data in self.SEQUENTIAL_DATA
         
-        # Start HTML document
-        html = """<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="utf-8">
-    <title>Track Curves</title>
-    <script src="https://cdn.plot.ly/plotly-2.26.0.min.js"></script>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 0;
-            padding: 20px;
-            background-color: #f5f5f5;
-        }
-        .chart-container {
-            background-color: white;
-            border-radius: 8px;
-            padding: 20px;
-            margin-bottom: 20px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        h1 {
-            color: #333;
-            margin-top: 0;
-        }
-    </style>
-</head>
-<body>
-    <h1>Track Curve Viewer</h1>
-"""
-        
-        if chart_type == 'Multi-View (All)':
-            # Show multiple charts
-            html += self._create_multi_view_charts(tracks, x_axis, show_grid, show_legend, smooth_data)
-        else:
-            # Show single chart
-            html += self._create_single_chart(tracks, chart_type, x_axis, show_grid, show_legend, smooth_data)
-        
-        html += """
-</body>
-</html>
-"""
-        return html
-    
-    def _create_single_chart(self, tracks: List[Track], chart_type: str, x_axis: str,
-                            show_grid: bool, show_legend: bool, smooth_data: bool) -> str:
-        """Create a single chart"""
-        # Determine y-axis attribute based on chart type
-        y_attr_map = {
-            'Altitude Profile': ('altitude', 'Altitude (m)'),
-            'Speed Profile': ('speed', 'Speed (km/h)'),
-            'Heart Rate Profile': ('heart_rate', 'Heart Rate (bpm)'),
-            'Power Profile': ('power', 'Power (W)'),
-            'Cadence Profile': ('cadence', 'Cadence (rpm)'),
-            'Temperature Profile': ('temperature', 'Temperature (°C)')
-        }
-        
-        y_attr, y_label = y_attr_map.get(chart_type, ('altitude', 'Value'))
-        
-        chart_id = 'chart1'
-        html = f'<div class="chart-container"><div id="{chart_id}"></div></div>\n'
-        
-        # Generate Plotly data
-        html += '<script>\n'
-        html += f'var data_{chart_id} = [\n'
+        # Get color map for multiple tracks
+        colors = plt.cm.tab10(range(len(tracks)))
         
         for idx, track in enumerate(tracks):
-            x_values = self._get_x_values(track, x_axis)
-            y_values = self._get_y_values(track, y_attr)
+            # Get data values
+            x_values = self._get_data_values(track, x_data)
+            y_values = self._get_data_values(track, y_data)
             
             if not x_values or not y_values:
                 continue
             
-            # Filter out None values
-            filtered_data = [(x, y) for x, y in zip(x_values, y_values) if y is not None]
-            if not filtered_data:
-                continue
+            # Ensure both have same length
+            min_len = min(len(x_values), len(y_values))
+            x_values = x_values[:min_len]
+            y_values = y_values[:min_len]
             
-            x_filtered, y_filtered = zip(*filtered_data)
+            label = track.name if track.name else f"Track {idx + 1}"
             
-            html += '{\n'
-            html += f'  x: {list(x_filtered)},\n'
-            html += f'  y: {list(y_filtered)},\n'
-            html += f'  name: "{track.name}",\n'
-            html += f'  type: "scatter",\n'
-            html += f'  mode: "lines",\n'
-            html += f'  line: {{{{color: "{track.color or "#1f77b4"}", width: 2}}}}\n'
-            html += '}' + (',' if idx < len(tracks) - 1 else '') + '\n'
+            # Handle color data
+            if color_data != 'None':
+                color_values = self._get_data_values(track, color_data)
+                if color_values:
+                    color_values = color_values[:min_len]
+                    # Create scatter plot with color mapping
+                    scatter = ax.scatter(x_values, y_values, c=color_values, 
+                                       label=label, cmap=colormap, s=10 if use_line_plot else 50,
+                                       vmin=color_min, vmax=color_max)
+                    # Add colorbar for color data
+                    if idx == len(tracks) - 1:  # Add colorbar only once
+                        cbar = self.figure.colorbar(scatter, ax=ax)
+                        cbar.set_label(color_data)
+                else:
+                    # Fallback to standard plot if color data not available
+                    if use_line_plot:
+                        ax.plot(x_values, y_values, label=label, color=colors[idx], linewidth=2)
+                    else:
+                        ax.scatter(x_values, y_values, label=label, color=colors[idx], s=50)
+            else:
+                # Standard plot without color mapping
+                if use_line_plot:
+                    ax.plot(x_values, y_values, label=label, color=colors[idx], linewidth=2)
+                else:
+                    ax.scatter(x_values, y_values, label=label, color=colors[idx], s=50)
         
-        html += '];\n'
+        # Configure plot
+        ax.set_xlabel(x_data, fontsize=12)
+        ax.set_ylabel(y_data, fontsize=12)
+        ax.set_title(f'{y_data} vs {x_data}', fontsize=14, fontweight='bold')
+        ax.grid(True, alpha=0.3)
         
-        # Layout configuration
-        html += f'var layout_{chart_id} = {{{{\n'
-        html += f'  title: "{chart_type}",\n'
-        html += f'  xaxis: {{{{title: "{x_axis}", showgrid: {str(show_grid).lower()}}}}},\n'
-        html += f'  yaxis: {{{{title: "{y_label}", showgrid: {str(show_grid).lower()}}}}},\n'
-        html += f'  showlegend: {str(show_legend).lower()},\n'
-        html += '  hovermode: "x unified"\n'
-        html += '}};\n'
+        if show_legend and len(tracks) > 0:
+            ax.legend(loc='best', framealpha=0.9)
         
-        html += f'Plotly.newPlot("{chart_id}", data_{chart_id}, layout_{chart_id});\n'
-        html += '</script>\n'
+        self.figure.tight_layout()
         
-        return html
+        return self.canvas, self.toolbar
     
-    def _create_multi_view_charts(self, tracks: List[Track], x_axis: str,
-                                  show_grid: bool, show_legend: bool, smooth_data: bool) -> str:
-        """Create multiple charts in a grid layout"""
-        chart_configs = [
-            ('Altitude Profile', 'altitude', 'Altitude (m)'),
-            ('Speed Profile', 'speed', 'Speed (km/h)'),
-            ('Heart Rate Profile', 'heart_rate', 'Heart Rate (bpm)'),
-            ('Power Profile', 'power', 'Power (W)')
-        ]
+    def _create_empty_view(self) -> tuple:
+        """Create an empty view when no tracks are loaded"""
+        self.figure = Figure(figsize=(10, 6), dpi=100)
+        self.canvas = FigureCanvas(self.figure)
+        self.toolbar = NavigationToolbar(self.canvas, None)
         
-        html = ''
+        ax = self.figure.add_subplot(111)
+        ax.text(0.5, 0.5, 'No Tracks Loaded\n\nUse "Add Tracks" to load GPS track files',
+                ha='center', va='center', fontsize=14, color='gray',
+                transform=ax.transAxes)
+        ax.set_xticks([])
+        ax.set_yticks([])
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        ax.spines['bottom'].set_visible(False)
+        ax.spines['left'].set_visible(False)
         
-        for idx, (title, y_attr, y_label) in enumerate(chart_configs):
-            chart_id = f'chart{idx + 1}'
-            html += f'<div class="chart-container"><div id="{chart_id}"></div></div>\n'
-            
-            # Generate Plotly data
-            html += '<script>\n'
-            html += f'var data_{chart_id} = [\n'
-            
-            for track_idx, track in enumerate(tracks):
-                x_values = self._get_x_values(track, x_axis)
-                y_values = self._get_y_values(track, y_attr)
-                
-                if not x_values or not y_values:
-                    continue
-                
-                # Filter out None values
-                filtered_data = [(x, y) for x, y in zip(x_values, y_values) if y is not None]
-                if not filtered_data:
-                    continue
-                
-                x_filtered, y_filtered = zip(*filtered_data)
-                
-                html += '{\n'
-                html += f'  x: {list(x_filtered)},\n'
-                html += f'  y: {list(y_filtered)},\n'
-                html += f'  name: "{track.name}",\n'
-                html += f'  type: "scatter",\n'
-                html += f'  mode: "lines",\n'
-                html += f'  line: {{{{color: "{track.color or "#1f77b4"}", width: 2}}}}\n'
-                html += '}' + (',' if track_idx < len(tracks) - 1 else '') + '\n'
-            
-            html += '];\n'
-            
-            # Layout configuration
-            html += f'var layout_{chart_id} = {{{{\n'
-            html += f'  title: "{title}",\n'
-            html += f'  xaxis: {{{{title: "{x_axis}", showgrid: {str(show_grid).lower()}}}}},\n'
-            html += f'  yaxis: {{{{title: "{y_label}", showgrid: {str(show_grid).lower()}}}}},\n'
-            html += f'  showlegend: {str(show_legend).lower()},\n'
-            html += '  hovermode: "x unified",\n'
-            html += '  height: 350\n'
-            html += '}};\n'
-            
-            html += f'Plotly.newPlot("{chart_id}", data_{chart_id}, layout_{chart_id});\n'
-            html += '</script>\n'
-        
-        return html
+        return self.canvas, self.toolbar
     
-    def _get_x_values(self, track: Track, x_axis: str) -> List:
-        """Get x-axis values based on selection"""
-        if x_axis == 'Distance (km)':
+    def _get_data_values(self, track: Track, data_type: str) -> List:
+        """Get data values based on data type selection"""
+        if data_type == 'Distance (km)':
             # Calculate cumulative distance
             from math import radians, cos, sin, asin, sqrt
             distances = [0.0]
@@ -294,22 +231,91 @@ class CurveViewer(BaseViewer):
                 r = 6371  # Earth radius in km
                 distances.append(distances[-1] + c * r)
             return distances
-        
-        elif x_axis == 'Time':
-            # Return timestamps if available
-            if track.points and track.points[0].timestamp:
-                base_time = track.points[0].timestamp
-                return [(p.timestamp - base_time).total_seconds() / 60.0  # minutes
-                       for p in track.points if p.timestamp]
+            
+        elif data_type == 'Time (min)':
+            if not track.points[0].timestamp:
+                return []
+            start_time = track.points[0].timestamp
+            return [(p.timestamp - start_time).total_seconds() / 60 for p in track.points if p.timestamp]
+            
+        elif data_type == 'Point Index':
             return list(range(len(track.points)))
+            
+        elif data_type == 'Altitude (m)':
+            return [p.altitude if p.altitude is not None else 0 for p in track.points]
+            
+        elif data_type == 'Speed (km/h)':
+            speeds = []
+            for i in range(1, len(track.points)):
+                p1 = track.points[i - 1]
+                p2 = track.points[i]
+                if p1.timestamp and p2.timestamp:
+                    from math import radians, cos, sin, asin, sqrt
+                    lon1, lat1, lon2, lat2 = map(radians, [p1.longitude, p1.latitude,
+                                                             p2.longitude, p2.latitude])
+                    dlon = lon2 - lon1
+                    dlat = lat2 - lat1
+                    a = sin(dlat/2)**2 + cos(lat1) * cos(lat2) * sin(dlon/2)**2
+                    c = 2 * asin(sqrt(a))
+                    distance = 6371 * c  # km
+                    time_diff = (p2.timestamp - p1.timestamp).total_seconds() / 3600  # hours
+                    if time_diff > 0:
+                        speeds.append(distance / time_diff)
+                    else:
+                        speeds.append(0)
+            # Add first point with same speed as second
+            if speeds:
+                speeds.insert(0, speeds[0])
+            return speeds
+            
+        elif data_type == 'Heart Rate (bpm)':
+            return [p.heart_rate if p.heart_rate is not None else 0 for p in track.points]
+            
+        elif data_type == 'Power (W)':
+            return [p.power if p.power is not None else 0 for p in track.points]
+            
+        elif data_type == 'Cadence (rpm)':
+            return [p.cadence if p.cadence is not None else 0 for p in track.points]
+            
+        elif data_type == 'Temperature (°C)':
+            return [p.temperature if p.temperature is not None else 0 for p in track.points]
+            
+        elif data_type == 'Vertical Speed (m/s)':
+            vert_speeds = []
+            for i in range(1, len(track.points)):
+                p1 = track.points[i - 1]
+                p2 = track.points[i]
+                if p1.altitude is not None and p2.altitude is not None and p1.timestamp and p2.timestamp:
+                    alt_diff = p2.altitude - p1.altitude
+                    time_diff = (p2.timestamp - p1.timestamp).total_seconds()
+                    if time_diff > 0:
+                        vert_speeds.append(alt_diff / time_diff)
+                    else:
+                        vert_speeds.append(0)
+                else:
+                    vert_speeds.append(0)
+            # Add first point with zero vertical speed
+            vert_speeds.insert(0, 0)
+            return vert_speeds
         
-        else:  # Point Index
-            return list(range(len(track.points)))
+        return []
     
-    def _get_y_values(self, track: Track, attribute: str) -> List:
-        """Get y-axis values based on attribute"""
-        return [getattr(p, attribute, None) for p in track.points]
+    def save_view(self, tracks: List[Track], output_file: str, options: Dict[str, Any] = None):
+        """Save the matplotlib figure to a file"""
+        if self.figure is None:
+            # Create view if not already created
+            self.create_view(tracks, options)
+        
+        if self.figure:
+            # Determine format from file extension
+            _, ext = os.path.splitext(output_file)
+            if ext.lower() in ['.png', '.jpg', '.jpeg', '.pdf', '.svg']:
+                self.figure.savefig(output_file, dpi=150, bbox_inches='tight')
+            else:
+                # Default to PNG
+                self.figure.savefig(output_file + '.png', dpi=150, bbox_inches='tight')
     
     def get_required_track_attributes(self) -> List[str]:
         """Get list of required track point attributes"""
         return ['altitude', 'timestamp']  # Minimum required for curve viewing
+

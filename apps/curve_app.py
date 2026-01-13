@@ -4,9 +4,9 @@ Demonstrates reuse of base components for a different visualization type
 """
 
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QGroupBox, QFormLayout,
-                             QComboBox, QCheckBox, QFileDialog, QMessageBox)
-from PyQt5.QtWebEngineWidgets import QWebEngineView
-from PyQt5.QtCore import Qt, QUrl
+                             QComboBox, QCheckBox, QFileDialog, QMessageBox, QPushButton,
+                             QDoubleSpinBox)
+from PyQt5.QtCore import Qt
 from typing import List
 import os
 from datetime import datetime
@@ -22,17 +22,20 @@ class CurveWindow(BaseWindow):
     
     def __init__(self):
         # Initialize curve-specific properties before calling super().__init__()
-        self.chart_type = "Altitude Profile"
-        self.x_axis = "Distance (km)"
-        self.show_grid = True
+        self.x_data = "Distance (km)"
+        self.y_data = "Altitude (m)"
+        self.color_data = "None"
+        self.colormap = "viridis"
+        self.color_min = None
+        self.color_max = None
         self.show_legend = True
-        self.smooth_data = False
+        self.canvas = None
+        self.toolbar = None
         
         super().__init__()
         self.setWindowTitle("GPS Tracklog Curve Viewer")
         
         # Add screenshot button to track manager (after it's created)
-        from PyQt5.QtWidgets import QPushButton
         screenshot_btn = QPushButton("Screenshot")
         screenshot_btn.setStyleSheet("padding: 8px; font-size: 12px;")
         screenshot_btn.clicked.connect(self.take_screenshot)
@@ -45,12 +48,8 @@ class CurveWindow(BaseWindow):
     def setup_viewer_widget(self):
         """Setup the curve display as central widget"""
         central_widget = QWidget()
-        curve_layout = QVBoxLayout()
-        central_widget.setLayout(curve_layout)
-        
-        # Web view for charts
-        self.curve_view = QWebEngineView()
-        curve_layout.addWidget(self.curve_view)
+        self.curve_layout = QVBoxLayout()
+        central_widget.setLayout(self.curve_layout)
         
         # Set as central widget
         self.setCentralWidget(central_widget)
@@ -68,49 +67,67 @@ class CurveWindow(BaseWindow):
         properties_layout = QFormLayout()
         properties_widget.setLayout(properties_layout)
         
-        # Chart settings group
-        chart_groupbox = QGroupBox("Chart settings")
-        chart_layout = QFormLayout()
-        chart_groupbox.setLayout(chart_layout)
-        properties_layout.addRow(chart_groupbox)
+        # Data selection group
+        data_groupbox = QGroupBox("Data Selection")
+        data_layout = QFormLayout()
+        data_groupbox.setLayout(data_layout)
+        properties_layout.addRow(data_groupbox)
         
-        # Chart type selector
-        self.chart_type_combo = QComboBox()
-        self.chart_type_combo.addItems(CurveViewer.AVAILABLE_CHARTS)
-        self.chart_type_combo.setCurrentText(self.chart_type)
-        self.chart_type_combo.currentTextChanged.connect(self.on_chart_type_changed)
-        chart_layout.addRow("Chart type:", self.chart_type_combo)
+        # X-axis data selector
+        self.x_data_combo = QComboBox()
+        self.x_data_combo.addItems(CurveViewer.AVAILABLE_DATA)
+        self.x_data_combo.setCurrentText(self.x_data)
+        self.x_data_combo.currentTextChanged.connect(self.on_x_data_changed)
+        data_layout.addRow("X-Axis:", self.x_data_combo)
         
-        # X-axis selector
-        self.x_axis_combo = QComboBox()
-        self.x_axis_combo.addItems(CurveViewer.X_AXIS_OPTIONS)
-        self.x_axis_combo.setCurrentText(self.x_axis)
-        self.x_axis_combo.currentTextChanged.connect(self.on_x_axis_changed)
-        chart_layout.addRow("X-axis:", self.x_axis_combo)
+        # Y-axis data selector
+        self.y_data_combo = QComboBox()
+        self.y_data_combo.addItems(CurveViewer.AVAILABLE_DATA)
+        self.y_data_combo.setCurrentText(self.y_data)
+        self.y_data_combo.currentTextChanged.connect(self.on_y_data_changed)
+        data_layout.addRow("Y-Axis:", self.y_data_combo)
+        
+        # Color data selector
+        self.color_data_combo = QComboBox()
+        self.color_data_combo.addItems(['None'] + CurveViewer.AVAILABLE_DATA)
+        self.color_data_combo.setCurrentText(self.color_data)
+        self.color_data_combo.currentTextChanged.connect(self.on_color_data_changed)
+        data_layout.addRow("Color By:", self.color_data_combo)
         
         # Display settings group
-        display_groupbox = QGroupBox("Display settings")
+        display_groupbox = QGroupBox("Display Settings")
         display_layout = QFormLayout()
         display_groupbox.setLayout(display_layout)
         properties_layout.addRow(display_groupbox)
         
-        # Show grid checkbox
-        self.show_grid_checkbox = QCheckBox()
-        self.show_grid_checkbox.setChecked(self.show_grid)
-        self.show_grid_checkbox.stateChanged.connect(self.on_show_grid_changed)
-        display_layout.addRow("Show grid:", self.show_grid_checkbox)
+        # Colormap selector
+        self.colormap_combo = QComboBox()
+        self.colormap_combo.addItems(CurveViewer.AVAILABLE_COLORMAPS)
+        self.colormap_combo.setCurrentText(self.colormap)
+        self.colormap_combo.setEnabled(False)  # Disabled until color data is selected
+        self.colormap_combo.currentTextChanged.connect(self.on_colormap_changed)
+        display_layout.addRow("Colormap:", self.colormap_combo)
+        
+        # Color scale min/max inputs
+        self.color_min_spinbox = QDoubleSpinBox()
+        self.color_min_spinbox.setRange(-999999, 999999)
+        self.color_min_spinbox.setDecimals(2)
+        self.color_min_spinbox.setEnabled(False)
+        self.color_min_spinbox.editingFinished.connect(self.on_color_min_changed)
+        display_layout.addRow("Color min:", self.color_min_spinbox)
+        
+        self.color_max_spinbox = QDoubleSpinBox()
+        self.color_max_spinbox.setRange(-999999, 999999)
+        self.color_max_spinbox.setDecimals(2)
+        self.color_max_spinbox.setEnabled(False)
+        self.color_max_spinbox.editingFinished.connect(self.on_color_max_changed)
+        display_layout.addRow("Color max:", self.color_max_spinbox)
         
         # Show legend checkbox
         self.show_legend_checkbox = QCheckBox()
         self.show_legend_checkbox.setChecked(self.show_legend)
         self.show_legend_checkbox.stateChanged.connect(self.on_show_legend_changed)
         display_layout.addRow("Show legend:", self.show_legend_checkbox)
-        
-        # Smooth data checkbox
-        self.smooth_data_checkbox = QCheckBox()
-        self.smooth_data_checkbox.setChecked(self.smooth_data)
-        self.smooth_data_checkbox.stateChanged.connect(self.on_smooth_data_changed)
-        display_layout.addRow("Smooth data:", self.smooth_data_checkbox)
         
         # Set widget to dock
         properties_dock.setWidget(properties_widget)
@@ -119,24 +136,79 @@ class CurveWindow(BaseWindow):
         self.addDockWidget(Qt.LeftDockWidgetArea, properties_dock)
         self.splitDockWidget(self.track_manager, properties_dock, Qt.Vertical)
     
-    def on_chart_type_changed(self, value: str):
-        """Handle chart type selection change"""
-        self.chart_type = value
-        self.statusBar().showMessage(f"Chart type set to: {value}")
-        if self.tracks:
-            self.on_viewer_properties_changed(fit_bounds=False)
-    
-    def on_x_axis_changed(self, value: str):
-        """Handle X-axis selection change"""
-        self.x_axis = value
+    def on_x_data_changed(self, value: str):
+        """Handle X-axis data selection change"""
+        self.x_data = value
         self.statusBar().showMessage(f"X-axis set to: {value}")
         if self.tracks:
             self.on_viewer_properties_changed(fit_bounds=False)
     
-    def on_show_grid_changed(self, state: int):
-        """Handle show grid checkbox change"""
-        self.show_grid = (state == Qt.Checked)
-        self.statusBar().showMessage(f"Grid: {'On' if self.show_grid else 'Off'}")
+    def on_y_data_changed(self, value: str):
+        """Handle Y-axis data selection change"""
+        self.y_data = value
+        self.statusBar().showMessage(f"Y-axis set to: {value}")
+        if self.tracks:
+            self.on_viewer_properties_changed(fit_bounds=False)
+    
+    def on_color_data_changed(self, value: str):
+        """Handle color data selection change"""
+        self.color_data = value
+        
+        # Enable/disable colormap and color range controls
+        if value != "None" and self.tracks:
+            # Compute min/max values for the selected color data
+            color_values = []
+            for track in self.tracks:
+                values = self.viewer._get_data_values(track, value)
+                color_values.extend([v for v in values if v is not None])
+            
+            if color_values:
+                computed_min = min(color_values)
+                computed_max = max(color_values)
+                self.color_min = computed_min
+                self.color_max = computed_max
+                
+                # Update spinboxes
+                self.color_min_spinbox.blockSignals(True)
+                self.color_max_spinbox.blockSignals(True)
+                self.color_min_spinbox.setValue(computed_min)
+                self.color_max_spinbox.setValue(computed_max)
+                self.color_min_spinbox.blockSignals(False)
+                self.color_max_spinbox.blockSignals(False)
+                
+                # Enable controls
+                self.colormap_combo.setEnabled(True)
+                self.color_min_spinbox.setEnabled(True)
+                self.color_max_spinbox.setEnabled(True)
+        else:
+            self.color_min = None
+            self.color_max = None
+            self.colormap_combo.setEnabled(False)
+            self.color_min_spinbox.setEnabled(False)
+            self.color_max_spinbox.setEnabled(False)
+        
+        self.statusBar().showMessage(f"Color by: {value}")
+        if self.tracks:
+            self.on_viewer_properties_changed(fit_bounds=False)
+    
+    def on_colormap_changed(self, value: str):
+        """Handle colormap selection change"""
+        self.colormap = value
+        self.statusBar().showMessage(f"Colormap set to: {value}")
+        if self.tracks:
+            self.on_viewer_properties_changed(fit_bounds=False)
+    
+    def on_color_min_changed(self):
+        """Handle color min value change"""
+        self.color_min = self.color_min_spinbox.value()
+        self.statusBar().showMessage(f"Color min set to: {self.color_min:.2f}")
+        if self.tracks:
+            self.on_viewer_properties_changed(fit_bounds=False)
+    
+    def on_color_max_changed(self):
+        """Handle color max value change"""
+        self.color_max = self.color_max_spinbox.value()
+        self.statusBar().showMessage(f"Color max set to: {self.color_max:.2f}")
         if self.tracks:
             self.on_viewer_properties_changed(fit_bounds=False)
     
@@ -147,13 +219,6 @@ class CurveWindow(BaseWindow):
         if self.tracks:
             self.on_viewer_properties_changed(fit_bounds=False)
     
-    def on_smooth_data_changed(self, state: int):
-        """Handle smooth data checkbox change"""
-        self.smooth_data = (state == Qt.Checked)
-        self.statusBar().showMessage(f"Data smoothing: {'On' if self.smooth_data else 'Off'}")
-        if self.tracks:
-            self.on_viewer_properties_changed(fit_bounds=False)
-    
     def on_viewer_properties_changed(self, fit_bounds: bool = False):
         """Handle viewer property changes and regenerate curves"""
         self.regenerate_view(fit_bounds)
@@ -161,68 +226,96 @@ class CurveWindow(BaseWindow):
     def get_viewer_options(self) -> dict:
         """Get current viewer options from UI controls"""
         return {
-            'chart_type': self.chart_type,
-            'x_axis': self.x_axis,
-            'show_grid': self.show_grid,
-            'show_legend': self.show_legend,
-            'smooth_data': self.smooth_data
+            'x_data': self.x_data,
+            'y_data': self.y_data,
+            'color_data': self.color_data,
+            'colormap': self.colormap,
+            'color_min': self.color_min,
+            'color_max': self.color_max,
+            'show_legend': self.show_legend
         }
     
-    def load_view_in_widget(self, view_file: str):
-        """Load the curve HTML file in the web view"""
-        if os.path.exists(view_file):
-            url = QUrl.fromLocalFile(os.path.abspath(view_file))
-            self.curve_view.setUrl(url)
-            self.curve_view.reload()
+    def regenerate_view(self, fit_bounds: bool = True):
+        """Override base class method to handle matplotlib canvas directly"""
+        try:
+            if not self.viewer:
+                return
+            
+            if not self.tracks:
+                # No tracks - show empty view
+                self.initialize_empty_view()
+                self.statusBar().showMessage("View reset (no tracks)")
+                return
+            
+            self.statusBar().showMessage("Generating view...")
+            
+            # Get viewer options
+            options = self.get_viewer_options()
+            
+            # Load view in widget (which creates the canvas)
+            self.load_view_in_widget()
+            
+            self.statusBar().showMessage(f"View generated with {len(self.tracks)} track(s)")
+            
+        except Exception as e:
+            from PyQt5.QtWidgets import QMessageBox
+            QMessageBox.critical(
+                self, 
+                "Error", 
+                f"Error generating view:\n{str(e)}"
+            )
+            self.statusBar().showMessage("Error generating view")
+    
+    def load_view_in_widget(self, view_file: str = None):
+        """Load the matplotlib canvas in the widget"""
+        # Clear previous canvas and toolbar
+        while self.curve_layout.count():
+            item = self.curve_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+        
+        if self.tracks:
+            # Create view with current tracks
+            options = self.get_viewer_options()
+            canvas, toolbar = self.viewer.create_view(self.tracks, options)
+            
+            # Add toolbar and canvas to layout
+            self.curve_layout.addWidget(toolbar)
+            self.curve_layout.addWidget(canvas)
+            
+            # Store references
+            self.canvas = canvas
+            self.toolbar = toolbar
+        else:
+            # Show empty view
+            self.initialize_empty_view()
     
     def initialize_empty_view(self):
         """Initialize an empty view with a message"""
-        html = """<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="utf-8">
-    <title>Track Curves</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-            margin: 0;
-            background-color: #f5f5f5;
-        }
-        .message {
-            text-align: center;
-            color: #666;
-        }
-        h1 {
-            color: #333;
-        }
-    </style>
-</head>
-<body>
-    <div class="message">
-        <h1>No Tracks Loaded</h1>
-        <p>Use "Add Tracks" to load GPS track files and view their curves.</p>
-    </div>
-</body>
-</html>
-"""
-        # Save empty view
-        view_file = os.path.abspath('track_curves.html')
-        with open(view_file, 'w', encoding='utf-8') as f:
-            f.write(html)
+        # Clear layout
+        while self.curve_layout.count():
+            item = self.curve_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
         
-        self.current_view_file = view_file
-        self.load_view_in_widget(view_file)
+        # Create empty view
+        canvas, toolbar = self.viewer.create_view([], None)
+        self.curve_layout.addWidget(toolbar)
+        self.curve_layout.addWidget(canvas)
+        
+        self.canvas = canvas
+        self.toolbar = toolbar
     
     def get_default_output_file(self) -> str:
         """Get default output filename for the curves"""
-        return "track_curves.html"
+        return "track_curves.png"
     
     def take_screenshot(self):
-        """Capture a screenshot of the curve view"""
+        """Save the current matplotlib figure to a file"""
+        if not self.canvas or not self.viewer.figure:
+            QMessageBox.warning(self, "Error", "No chart to save")
+            return
+        
         # Generate default filename with timestamp
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         default_filename = f"curves_screenshot_{timestamp}.png"
@@ -230,17 +323,15 @@ class CurveWindow(BaseWindow):
         # Ask user where to save
         file_path, _ = QFileDialog.getSaveFileName(
             self,
-            "Save Screenshot",
+            "Save Chart",
             default_filename,
-            "PNG Images (*.png);;JPEG Images (*.jpg);;All Files (*)"
+            "PNG Images (*.png);;JPEG Images (*.jpg);;PDF Files (*.pdf);;SVG Files (*.svg);;All Files (*)"
         )
         
         if file_path:
-            # Capture the screenshot
-            pixmap = self.curve_view.grab()
-            
-            # Save the screenshot
-            if pixmap.save(file_path):
-                self.statusBar().showMessage(f"Screenshot saved: {file_path}")
-            else:
-                QMessageBox.warning(self, "Error", "Failed to save screenshot")
+            try:
+                self.viewer.figure.savefig(file_path, dpi=150, bbox_inches='tight')
+                self.statusBar().showMessage(f"Chart saved: {file_path}")
+            except Exception as e:
+                QMessageBox.warning(self, "Error", f"Failed to save chart: {str(e)}")
+

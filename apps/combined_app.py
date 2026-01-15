@@ -5,6 +5,7 @@ Displays both map and curve viewers in a single window with shared track managem
 
 from typing import List, Optional
 import os
+from datetime import datetime
 
 from PyQt5.QtWidgets import (
     QMainWindow,
@@ -16,6 +17,8 @@ from PyQt5.QtWidgets import (
     QComboBox,
     QCheckBox,
     QDoubleSpinBox,
+    QFileDialog,
+    QMessageBox,
 )
 from PyQt5.QtWebEngineWidgets import QWebEngineView
 from PyQt5.QtCore import Qt, QUrl
@@ -24,6 +27,7 @@ from models.track import Track
 from ui.track_manager_widget import TrackManagerWidget
 from viewer.map_viewer import MapViewer
 from viewer.curve_viewer import CurveViewer
+from viewer.power_curve_viewer import PowerCurveViewer
 
 
 class CombinedWindow(QMainWindow):
@@ -41,6 +45,7 @@ class CombinedWindow(QMainWindow):
         # Viewers
         self.map_viewer = MapViewer()
         self.curve_viewer = CurveViewer()
+        self.power_curve_viewer = PowerCurveViewer()
 
         # Map properties
         self.base_map = "OpenTopoMap"
@@ -60,6 +65,9 @@ class CombinedWindow(QMainWindow):
         self.color_min_curve: Optional[float] = None
         self.color_max_curve: Optional[float] = None
         self.show_legend_curve = True
+        
+        # Power curve properties
+        self.show_legend_power = True
 
         # UI setup
         self._setup_ui()
@@ -96,15 +104,27 @@ class CombinedWindow(QMainWindow):
         self.curve_dock.setWidget(self.curve_container)
         self.curve_dock.setAllowedAreas(Qt.AllDockWidgetAreas)
         self.addDockWidget(Qt.RightDockWidgetArea, self.curve_dock)
+        
+        # Power curve viewer dock
+        self.power_curve_container = QWidget()
+        self.power_curve_container.setMinimumSize(400, 300)
+        self.power_curve_layout = QVBoxLayout()
+        self.power_curve_container.setLayout(self.power_curve_layout)
+        self.power_curve_dock = QDockWidget("Power Curve", self)
+        self.power_curve_dock.setWidget(self.power_curve_container)
+        self.power_curve_dock.setAllowedAreas(Qt.AllDockWidgetAreas)
+        self.addDockWidget(Qt.RightDockWidgetArea, self.power_curve_dock)
 
         # Tabify viewers in the main area
         self.tabifyDockWidget(self.map_dock, self.curve_dock)
+        self.tabifyDockWidget(self.curve_dock, self.power_curve_dock)
         self.map_dock.raise_()  # Show map tab by default
 
         # Track manager dock (left)
         self.track_manager = TrackManagerWidget("Active Tracklogs", self)
         self.track_manager.tracks_changed.connect(self.on_tracks_changed)
         self.track_manager.track_properties_changed.connect(self.on_track_properties_changed)
+        self.track_manager.map_screenshot_requested.connect(self.on_map_screenshot_requested)
         self.addDockWidget(Qt.LeftDockWidgetArea, self.track_manager)
 
         # Map properties dock (bottom left, below track manager)
@@ -421,6 +441,10 @@ class CombinedWindow(QMainWindow):
         # Empty curve view
         canvas, toolbar = self.curve_viewer.create_view([], None)
         self._set_curve_content(canvas, toolbar)
+        
+        # Empty power curve view
+        power_canvas, power_toolbar = self.power_curve_viewer.create_view([], None)
+        self._set_power_curve_content(power_canvas, power_toolbar)
 
     def _set_curve_content(self, canvas, toolbar):
         # Clear and set new content
@@ -432,6 +456,17 @@ class CombinedWindow(QMainWindow):
             self.curve_layout.addWidget(toolbar)
         if canvas:
             self.curve_layout.addWidget(canvas)
+    
+    def _set_power_curve_content(self, canvas, toolbar):
+        # Clear and set new content
+        while self.power_curve_layout.count():
+            item = self.power_curve_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+        if toolbar:
+            self.power_curve_layout.addWidget(toolbar)
+        if canvas:
+            self.power_curve_layout.addWidget(canvas)
 
     # Track and property change handlers
     def on_tracks_changed(self, tracks: List[Track]):
@@ -445,6 +480,31 @@ class CombinedWindow(QMainWindow):
     def on_track_properties_changed(self):
         # Preserve map view when only properties change
         self._regenerate_views(fit_bounds=False)
+    
+    def on_map_screenshot_requested(self):
+        """Handle map screenshot request"""
+        # Generate default filename with timestamp
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        default_filename = f"map_screenshot_{timestamp}.png"
+        
+        # Ask user where to save
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Save Screenshot",
+            default_filename,
+            "PNG Images (*.png);;JPEG Images (*.jpg);;All Files (*)"
+        )
+        
+        if file_path:
+            # Capture the screenshot
+            pixmap = self.map_view.grab()
+            
+            # Save the screenshot
+            if pixmap.save(file_path):
+                self.statusBar().showMessage(f"Screenshot saved: {file_path}")
+            else:
+                from PyQt5.QtWidgets import QMessageBox
+                QMessageBox.warning(self, "Error", "Failed to save screenshot")
 
     # Map property handlers
     def on_base_map_changed(self, value: str):
@@ -624,3 +684,10 @@ class CombinedWindow(QMainWindow):
         }
         canvas, toolbar = self.curve_viewer.create_view(self.tracks, curve_options)
         self._set_curve_content(canvas, toolbar)
+        
+        # Power curve view generation
+        power_curve_options = {
+            'show_legend': self.show_legend_power
+        }
+        power_canvas, power_toolbar = self.power_curve_viewer.create_view(self.tracks, power_curve_options)
+        self._set_power_curve_content(power_canvas, power_toolbar)

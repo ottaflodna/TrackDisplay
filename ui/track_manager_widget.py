@@ -25,10 +25,12 @@ class TrackManagerWidget(QDockWidget):
     Signals:
         tracks_changed: Emitted when tracks are added, removed, or cleared
         track_properties_changed: Emitted when a track's properties are modified
+        map_screenshot_requested: Emitted when user wants to capture map screenshot
     """
     
     tracks_changed = pyqtSignal(list)  # List of all current tracks
     track_properties_changed = pyqtSignal()
+    map_screenshot_requested = pyqtSignal()
     
     # Color palette for tracks (can be overridden by applications)
     COLORS = [
@@ -80,6 +82,16 @@ class TrackManagerWidget(QDockWidget):
         button_layout.addWidget(clear_btn)
         
         layout.addLayout(button_layout)
+        
+        # Screenshot button
+        screenshot_layout = QHBoxLayout()
+        
+        screenshot_btn = QPushButton("Map Screenshot")
+        screenshot_btn.setStyleSheet("padding: 8px; font-size: 12px; background-color: #457B9D; color: white;")
+        screenshot_btn.clicked.connect(self.request_map_screenshot)
+        screenshot_layout.addWidget(screenshot_btn)
+        
+        layout.addLayout(screenshot_layout)
         
         self.setWidget(main_widget)
     
@@ -216,6 +228,12 @@ class TrackManagerWidget(QDockWidget):
         if self.parent():
             self.parent().statusBar().showMessage("Track properties updated")
         self.track_properties_changed.emit()
+    
+    def request_map_screenshot(self):
+        """Request a screenshot of the map viewer"""
+        if self.parent():
+            self.parent().statusBar().showMessage("Capturing map screenshot...")
+        self.map_screenshot_requested.emit()
     
     def get_tracks(self) -> List[Track]:
         """Get the current list of tracks"""

@@ -104,6 +104,9 @@ class TCXParser:
         # Apply window averaging for power and vertical speed
         track.apply_window_averaging()
         
+        # Calculate power curve if power data is available
+        track.calculate_power_curve()
+        
         return track
     
     def _calculate_vertical_speeds(self, track: Track):

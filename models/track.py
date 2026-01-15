@@ -49,6 +49,7 @@ class Track:
         self.track_type = track_type
         self.points: List[TrackPoint] = []
         self.color: Optional[str] = None
+        self.power_curve: Optional[dict] = None  # Power curve data
     
     def add_point(self, point: TrackPoint):
         """Add a point to the track"""
@@ -290,6 +291,178 @@ class Track:
             # Calculate average
             if window_count > 0:
                 point.speed = window_sum / window_count
+    
+    def calculate_power_curve(self, pause_threshold_seconds: float = 900.0):
+        """
+        Calculate power curve (best average power) over various durations.
+        Pauses (gaps > pause_threshold_seconds) are ignored.
+        
+        Args:
+            pause_threshold_seconds: Time gap to consider as a pause (default 5s)
+        """
+        # Check if track has power data
+        if not any(p.power is not None and p.power > 0 and p.timestamp is not None 
+                   for p in self.points):
+            self.power_curve = None
+            return
+        
+        # Define durations to evaluate (in seconds)
+        durations = {
+            '5s': 5,
+            '10s': 10,
+            '20s': 20,
+            '30s': 30,
+            '1min': 60,
+            '2min': 120,
+            '5min': 300,
+            '10min': 600,
+            '20min': 1200,
+            '30min': 1800,
+            '1h': 3600,
+            '2h': 7200,
+            '5h': 18000
+        }
+        
+        # Calculate total activity duration (excluding pauses)
+        total_duration = self._calculate_moving_time(pause_threshold_seconds)
+        if total_duration > 0:
+            durations['Total'] = total_duration
+        
+        # Initialize power curve dictionary
+        self.power_curve = {}
+        
+        # Build list of valid segments (excluding pauses)
+        segments = self._build_moving_segments(pause_threshold_seconds)
+        
+        if not segments:
+            self.power_curve = {key: None for key in durations.keys()}
+            return
+        
+        # Calculate best average power for each duration
+        for label, duration_seconds in durations.items():
+            if total_duration < duration_seconds and label != 'Total':
+                self.power_curve[label] = None
+            else:
+                best_avg = self._find_best_average_power(segments, duration_seconds)
+                self.power_curve[label] = best_avg
+    
+    def _calculate_moving_time(self, pause_threshold_seconds: float) -> float:
+        """Calculate total moving time (excluding pauses)"""
+        if len(self.points) < 2:
+            return 0.0
+        
+        total_time = 0.0
+        for i in range(1, len(self.points)):
+            p1 = self.points[i - 1]
+            p2 = self.points[i]
+            
+            if p1.timestamp is None or p2.timestamp is None:
+                continue
+            
+            time_diff = (p2.timestamp - p1.timestamp).total_seconds()
+            if 0 < time_diff <= pause_threshold_seconds:
+                total_time += time_diff
+        
+        return total_time
+    
+    def _build_moving_segments(self, pause_threshold_seconds: float) -> list:
+        """
+        Build list of continuous moving segments (point indices).
+        Each segment is a list of consecutive point indices without pauses.
+        """
+        segments = []
+        current_segment = []
+        
+        for i, point in enumerate(self.points):
+            if point.power is None or point.timestamp is None:
+                # Save current segment if not empty
+                if current_segment:
+                    segments.append(current_segment)
+                    current_segment = []
+                continue
+            
+            # Check if this is a continuation or start of new segment
+            if current_segment:
+                prev_idx = current_segment[-1]
+                prev_point = self.points[prev_idx]
+                time_diff = (point.timestamp - prev_point.timestamp).total_seconds()
+                
+                if time_diff > pause_threshold_seconds:
+                    # Pause detected - save current segment and start new one
+                    segments.append(current_segment)
+                    current_segment = [i]
+                else:
+                    # Continue current segment
+                    current_segment.append(i)
+            else:
+                # Start new segment
+                current_segment.append(i)
+        
+        # Add final segment
+        if current_segment:
+            segments.append(current_segment)
+        
+        return segments
+    
+    def _find_best_average_power(self, segments: list, 
+                                  target_duration: float) -> Optional[float]:
+        """
+        Find the best (highest) average power over the target duration.
+        Uses an efficient sliding window approach with O(n) complexity per duration.
+        
+        Args:
+            segments: List of moving segments (lists of point indices)
+            target_duration: Target duration in seconds
+            
+        Returns:
+            Best average power or None if no valid window found
+        """
+        best_avg = None
+        
+        for segment in segments:
+            if len(segment) < 2:
+                continue
+            
+            # Use sliding window with two pointers
+            window_start = 0
+            window_power_time = 0.0  # Sum of (power * time) in window
+            window_duration = 0.0     # Total time in window
+            
+            # Precompute time differences and power-time products for efficiency
+            intervals = []
+            for i in range(len(segment) - 1):
+                curr_idx = segment[i]
+                next_idx = segment[i + 1]
+                curr_point = self.points[curr_idx]
+                next_point = self.points[next_idx]
+                
+                time_diff = (next_point.timestamp - curr_point.timestamp).total_seconds()
+                avg_power = (curr_point.power + next_point.power) / 2
+                power_time = avg_power * time_diff
+                
+                intervals.append((time_diff, power_time))
+            
+            # Slide the window through the segment
+            for window_end in range(len(intervals)):
+                # Add current interval to window
+                time_diff, power_time = intervals[window_end]
+                window_duration += time_diff
+                window_power_time += power_time
+                
+                # Shrink window from the left if it exceeds target duration
+                while window_duration > target_duration and window_start <= window_end:
+                    window_duration -= intervals[window_start][0]
+                    window_power_time -= intervals[window_start][1]
+                    window_start += 1
+                
+                # Check if window meets or is close to target duration
+                # We accept windows that are at least 95% of target duration
+                if window_duration >= target_duration * 0.95:
+                    window_avg = window_power_time / window_duration
+                    if best_avg is None or window_avg > best_avg:
+                        best_avg = window_avg
+        
+        return best_avg
     
     def __len__(self):
         """Return number of points"""

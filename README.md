@@ -44,19 +44,6 @@ pip install -r requirements.txt
 
 ## Usage
 
-### Map Viewer
-Run the map viewer application:
-```bash
-python scripts/map_main.py
-```
-
-### Curve Viewer
-Run the curve/chart viewer application:
-```bash
-python scripts/curve_main.py
-```
-
-### Combined Viewer
 Run the combined map + curve viewer application:
 ```bash
 python scripts/display_main.py
@@ -74,14 +61,13 @@ python scripts/display_main.py
 The application follows a modular, object-oriented architecture with clear separation of concerns:
 
 ```
-TrackDisplay/
-├── map_main.py                  # Map viewer application entry point
-├── curve_main.py                # Curve viewer application entry point
+GPSTrackDisplay/
+├── scripts/
+│   └── display_main.py         # Combined viewer application entry point
 ├── requirements.txt             # Python dependencies
 │
 ├── apps/                        # Application implementations
-│   ├── map_app.py              # Map viewer application (MapWindow)
-│   └── curve_app.py            # Curve viewer application (CurveWindow)
+│   └── combined_app.py         # Combined viewer (map + curve/power charts)
 │
 ├── models/                      # Data models
 │   └── track.py                # Track and TrackPoint classes
@@ -92,7 +78,6 @@ TrackDisplay/
 │   └── tcx_parser.py           # TCX format parser
 │
 ├── ui/                          # User interface components
-│   ├── base_window.py          # Abstract base window class
 │   ├── file_selector.py        # File selection dialog
 │   ├── track_manager_widget.py # Track list management
 │   └── track_list_item.py      # Individual track item widget
@@ -100,17 +85,22 @@ TrackDisplay/
 ├── viewer/                      # Visualization engines
 │   ├── base_viewer.py          # Abstract base viewer interface
 │   ├── map_viewer.py           # Folium-based map viewer
-│   └── curve_viewer.py         # Plotly-based curve/chart viewer
+│   ├── curve_viewer.py         # Matplotlib-based curve/chart viewer
+│   └── power_curve_viewer.py   # Power curve analysis viewer
+│
+├── bin/                         # Launcher scripts
+│   ├── GPSTrackDisplay         # Unix launcher
+│   └── GPSTrackDisplay.bat     # Windows launcher
 │
 └── tracklogs/                   # Sample track files
 ```
 
 ### Architecture Highlights
 
-- **Base Classes**: `BaseWindow` and `BaseViewer` provide abstract interfaces for easy extension
-- **App Layer**: `MapWindow` and `CurveWindow` implement specific applications by extending `BaseWindow`
-- **Viewer Layer**: `MapViewer` and `CurveViewer` implement specific visualizations by extending `BaseViewer`
-- **Reusable Components**: Track management, file selection, and parsing are shared across applications
+- **Combined Application**: `CombinedWindow` integrates map and chart views in a unified interface
+- **Base Classes**: `BaseViewer` provides abstract interface for visualization engines
+- **Viewer Layer**: `MapViewer`, `CurveViewer`, and `PowerCurveViewer` implement specific visualizations
+- **Reusable Components**: Track management, file selection, and parsing are modular and reusable
 
 ## Supported Formats
 
@@ -149,10 +139,10 @@ Track segments can be colored by various metrics:
 
 ## Extending the Application
 
-The refactored architecture makes it easy to add new viewers or applications:
+The modular architecture makes it easy to add new visualization types:
 
 1. **Create a new viewer**: Extend `BaseViewer` and implement `create_view()`, `get_available_options()`, and `get_default_options()`
-2. **Create a new application**: Extend `BaseWindow` and implement `create_viewer()`, `setup_viewer_widget()`, and `setup_viewer_properties_dock()`
-3. **Add a new entry point**: Create a new main file that instantiates your application window
+2. **Integrate into combined app**: Add the new viewer instance to `CombinedWindow` and create corresponding UI controls
+3. **Add viewer properties**: Extend the properties dock with controls specific to your viewer
 
-Example: Adding a 3D terrain viewer would require creating `viewer/terrain_viewer.py` and `apps/terrain_app.py`, plus a simple `terrain_main.py` entry point.
+Example: Adding a 3D terrain viewer would require creating `viewer/terrain_viewer.py` extending `BaseViewer`, then integrating it into `CombinedWindow` with its own dock and property controls.

@@ -2,7 +2,6 @@
 Apps package - Contains different track visualization applications
 """
 
-from .curve_app import CurveWindow
-from .map_app import MapWindow
+from .combined_app import CombinedWindow
 
-__all__ = ['CurveWindow', 'MapWindow']
+__all__ = ['CombinedWindow']

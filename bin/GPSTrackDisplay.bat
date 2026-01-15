@@ -13,4 +13,4 @@ cd /d "%~dp0.."
 set PYTHONPATH=%CD%
 
 REM Run the map viewer application
-python scripts\display_main.py
+python scripts\gpstrackdisplay_main.py

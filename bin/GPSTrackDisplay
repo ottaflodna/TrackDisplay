@@ -4,4 +4,4 @@ cd "$(dirname "$0")/.."
 export PYTHONPATH="$PWD"
 
 
-python3 scripts/display_main.py
+python3 scripts/gpstrackdisplay_main.py

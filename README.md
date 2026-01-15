@@ -47,13 +47,19 @@ pip install -r requirements.txt
 ### Map Viewer
 Run the map viewer application:
 ```bash
-python map_main.py
+python scripts/map_main.py
 ```
 
 ### Curve Viewer
 Run the curve/chart viewer application:
 ```bash
-python curve_main.py
+python scripts/curve_main.py
+```
+
+### Combined Viewer
+Run the combined map + curve viewer application:
+```bash
+python scripts/display_main.py
 ```
 
 ### Workflow

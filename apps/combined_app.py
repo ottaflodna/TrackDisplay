@@ -5,6 +5,7 @@ Displays both map and curve viewers in a single window with shared track managem
 
 from typing import List, Optional
 import os
+import json
 from datetime import datetime
 
 from PyQt5.QtWidgets import (
@@ -21,7 +22,7 @@ from PyQt5.QtWidgets import (
     QMessageBox,
 )
 from PyQt5.QtWebEngineWidgets import QWebEngineView
-from PyQt5.QtCore import Qt, QUrl
+from PyQt5.QtCore import Qt, QUrl, QEventLoop, QTimer
 
 from models.track import Track
 from ui.track_manager_widget import TrackManagerWidget
@@ -649,6 +650,10 @@ class CombinedWindow(QMainWindow):
 
     # View regeneration
     def _regenerate_views(self, fit_bounds: bool = False):
+        # Capture current view before regenerating (if not fitting bounds)
+        if not fit_bounds and self.tracks:
+            self._capture_current_view()
+        
         # Map view generation
         map_options = {
             'base_map': self.base_map,
@@ -691,3 +696,58 @@ class CombinedWindow(QMainWindow):
         }
         power_canvas, power_toolbar = self.power_curve_viewer.create_view(self.tracks, power_curve_options)
         self._set_power_curve_content(power_canvas, power_toolbar)
+    
+    def _capture_current_view(self):
+        """Capture the current map center and zoom from the browser"""
+        # JavaScript to extract Leaflet map's current view
+        js_code = """
+        (function() {
+            try {
+                var map = null;
+                for (var key in window) {
+                    if (window[key] && window[key]._layers) {
+                        map = window[key];
+                        break;
+                    }
+                }
+                if (map) {
+                    var center = map.getCenter();
+                    var zoom = map.getZoom();
+                    return JSON.stringify({
+                        lat: center.lat,
+                        lng: center.lng,
+                        zoom: zoom
+                    });
+                }
+                return null;
+            } catch(e) {
+                return null;
+            }
+        })();
+        """
+        
+        # Use event loop to wait for JavaScript result
+        loop = QEventLoop()
+        result_holder = {'result': None}
+        
+        def handle_result(result):
+            result_holder['result'] = result
+            loop.quit()
+        
+        # Execute JavaScript
+        self.map_view.page().runJavaScript(js_code, handle_result)
+        
+        # Wait for result (max 200ms timeout)
+        QTimer.singleShot(200, loop.quit)
+        loop.exec_()
+        
+        # Parse result and update view settings
+        if result_holder['result']:
+            try:
+                view_data = json.loads(result_holder['result'])
+                self.view_state = {
+                    'current_center': [view_data['lat'], view_data['lng']],
+                    'current_zoom': int(view_data['zoom'])
+                }
+            except:
+                pass
